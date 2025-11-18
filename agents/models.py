@@ -1,5 +1,5 @@
 """Pydantic models for API requests and responses."""
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Union
 from pydantic import BaseModel, Field
 
 
@@ -19,7 +19,7 @@ class ChatRequest(BaseModel):
 class ChartData(BaseModel):
     """Chart data and configuration."""
     chart_type: Literal["bar", "line", "table"]
-    data: list[dict[str, Any]]
+    data: Union[list[dict[str, Any]], dict[str, Any]]  # Chart.js format or raw data array
     x_axis: Optional[str] = None
     y_axis: Optional[str] = None
     title: Optional[str] = None
@@ -57,3 +57,19 @@ class CubeQuery(BaseModel):
     timeDimensions: Optional[list[dict[str, Any]]] = None
     order: Optional[dict[str, str]] = None
     limit: Optional[int] = None
+
+
+class AgentInfo(BaseModel):
+    """Information about a registered Praval agent."""
+    name: str
+    status: Literal["active", "inactive"] = "active"
+    description: str
+    provider: Optional[str] = None
+    tools: list[str] = Field(default_factory=list)
+    memory_enabled: bool = False
+
+
+class AgentListResponse(BaseModel):
+    """Response model for listing agents."""
+    agents: list[AgentInfo]
+    total_count: int

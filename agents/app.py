@@ -1,7 +1,10 @@
 """FastAPI application for Manufacturing Analytics Agents."""
 import logging
+import uuid
+import asyncio
 from datetime import datetime
 from contextlib import asynccontextmanager
+from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -11,12 +14,23 @@ from models import (
     ChatResponse,
     ChatMessage,
     HealthResponse,
-    SessionInfo
+    SessionInfo,
+    AgentInfo,
+    AgentListResponse
 )
 from cubejs_client import cubejs_client
-from data_analyst_agent import data_analyst_agent
-from chat_agent import chat_agent
 from session_manager import session_manager
+
+# Import Praval infrastructure
+from reef_config import initialize_reef, cleanup_reef
+from praval import broadcast, get_reef, get_registry
+
+# Import all Praval agents (registers them via @agent decorator)
+import manufacturing_advisor
+import analytics_specialist
+import visualization_specialist
+import quality_inspector
+import report_writer
 
 # Configure logging
 logging.basicConfig(
@@ -31,6 +45,15 @@ async def lifespan(app: FastAPI):
     """Lifecycle manager for the application."""
     logger.info(f"Starting {settings.app_name} v{settings.app_version}")
 
+    # Initialize Praval Reef
+    try:
+        reef = initialize_reef()
+        logger.info("✓ Praval Reef initialized")
+        logger.info(f"✓ Registered agents: Manufacturing Advisor, Analytics Specialist, "
+                   f"Visualization Specialist, Quality Inspector, Report Writer")
+    except Exception as e:
+        logger.error(f"✗ Reef initialization error: {str(e)}")
+
     # Check Cube.js connection on startup
     try:
         is_connected = await cubejs_client.health_check()
@@ -44,6 +67,7 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down application")
+    cleanup_reef()
 
 
 # Initialize FastAPI app
@@ -85,17 +109,87 @@ async def health_check():
     )
 
 
+@app.get("/agents", response_model=AgentListResponse, tags=["Agents"])
+async def list_agents():
+    """
+    Get list of all registered Praval agents.
+
+    Uses Praval's reef channels to discover registered agents.
+    Returns agent metadata including name, description, and status.
+    """
+    try:
+        # Get reef instance and channel stats
+        reef = get_reef()
+        stats = reef.get_network_stats()
+
+        agent_info_list = []
+        agent_names_set = set()
+
+        # Agent descriptions based on architecture documentation
+        agent_descriptions = {
+            "manufacturing_advisor": "Domain expertise and manufacturing terminology mapping",
+            "analytics_specialist": "Query translation and Cube.js execution",
+            "visualization_specialist": "Chart type selection and data visualization",
+            "quality_inspector": "Anomaly detection and root cause analysis",
+            "report_writer": "Narrative composition and insights generation",
+            "response_storage": "Response storage for HTTP endpoint"
+        }
+
+        # Extract agent names from all channels
+        for channel_name, channel_stats in stats.get('channel_stats', {}).items():
+            channel = reef.get_channel(channel_name)
+            if channel and hasattr(channel, 'subscribers'):
+                # Get unique agent names from subscribers
+                for agent_name in channel.subscribers.keys():
+                    agent_names_set.add(agent_name)
+
+        # Also try to get agents from global registry as fallback
+        try:
+            registry = get_registry()
+            all_agents = registry.get_all_agents()
+            for agent_name in all_agents.keys():
+                agent_names_set.add(agent_name)
+        except Exception as registry_error:
+            logger.warning(f"Could not access registry: {registry_error}")
+
+        # Build agent info list
+        for agent_name in sorted(agent_names_set):
+            # Skip non-agent subscribers (like chat_endpoint)
+            if agent_name in ['chat_endpoint', 'system']:
+                continue
+
+            agent_info = AgentInfo(
+                name=agent_name,
+                status="active",
+                description=agent_descriptions.get(agent_name, "Manufacturing analytics agent"),
+                provider="openai",  # Default provider
+                tools=[],
+                memory_enabled=False
+            )
+            agent_info_list.append(agent_info)
+
+        logger.info(f"Listed {len(agent_info_list)} registered agents from reef channels")
+
+        return AgentListResponse(
+            agents=agent_info_list,
+            total_count=len(agent_info_list)
+        )
+
+    except Exception as e:
+        logger.error(f"Error listing agents: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve agent list")
+
+
 @app.post("/chat", response_model=ChatResponse, tags=["Chat"])
 async def chat(request: ChatRequest):
     """
-    Main chat endpoint.
+    Main chat endpoint using Praval multi-agent system.
 
-    Processes user message, determines if data query is needed,
-    executes query via Cube.js, generates insights, and returns response.
+    Broadcasts user_query Spore and waits for final_response_ready from agents.
     """
     try:
         # Get or create session
-        session_id = request.session_id or session_manager.create_session()
+        session_id = request.session_id or str(uuid.uuid4())
 
         if not session_manager.session_exists(session_id):
             session_id = session_manager.create_session()
@@ -110,91 +204,113 @@ async def chat(request: ChatRequest):
 
         # Get conversation context
         context_messages = session_manager.get_context(session_id, max_messages=5)
-        context_string = chat_agent.build_context_string(context_messages[:-1])  # Exclude current message
+        context = [
+            {"role": msg.role, "content": msg.content}
+            for msg in context_messages[:-1]  # Exclude current message
+        ]
 
-        logger.info(f"Processing message: '{request.message}' (session: {session_id})")
+        logger.info(f"Processing message via Praval agents: '{request.message}' (session: {session_id})")
 
-        # Determine if data query is needed
-        needs_query = await chat_agent.should_query_data(request.message, context_string)
+        # Create user_query Spore knowledge
+        user_query_knowledge = {
+            "type": "user_query",
+            "message": request.message,
+            "session_id": session_id,
+            "context": context,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
 
-        if not needs_query:
-            # Generate conversational response without data query
-            response_text = await chat_agent.generate_conversational_response(
-                request.message,
-                context_string
-            )
+        # Broadcast user_query Spore using Reef's API
+        logger.info(f"Broadcasting user_query Spore for session {session_id}")
+        reef = get_reef()
+        reef.broadcast(from_agent="chat_endpoint", knowledge=user_query_knowledge)
 
+        # Wait for final_response_ready with timeout
+        # Since Praval agents process Spores asynchronously, we need to wait for the response
+        # Multiple LLM calls in sequence: Manufacturing Advisor -> Quality Inspector -> Report Writer
+        # Each can take 3-5 seconds, so allow sufficient time for the full pipeline
+        timeout_seconds = 30.0
+        poll_interval = 0.2
+        start_time = asyncio.get_event_loop().time()
+
+        final_response = None
+
+        # Create temporary response storage if not exists
+        if not hasattr(report_writer, '_pending_responses'):
+            report_writer._pending_responses = {}
+
+        while asyncio.get_event_loop().time() - start_time < timeout_seconds:
+            await asyncio.sleep(poll_interval)
+
+            # Check if Report Writer has stored the response
+            if hasattr(report_writer, '_pending_responses'):
+                final_response = report_writer._pending_responses.get(session_id)
+                if final_response:
+                    # Clean up
+                    del report_writer._pending_responses[session_id]
+                    logger.info(f"Received final_response_ready for session {session_id}")
+                    break
+
+        # Timeout handling
+        if final_response is None:
+            logger.error(f"Timeout waiting for final_response_ready (session {session_id})")
+
+            # Create fallback response
             assistant_message = ChatMessage(
                 role="assistant",
-                content=response_text,
+                content="I'm analyzing your query. This is taking longer than expected. Please try again.",
                 timestamp=datetime.now().isoformat()
             )
             session_manager.add_message(session_id, assistant_message)
 
             return ChatResponse(
-                message=response_text,
+                message="Processing timeout. Please try again.",
                 session_id=session_id,
                 chart=None,
                 insights=None,
-                suggested_questions=["What's the overall pass rate?", "Which component has the best quality?"]
+                suggested_questions=["Can you rephrase your question?"]
             )
 
-        # Translate to Cube.js query
-        cube_query, chart_type = await data_analyst_agent.translate_to_query(
-            request.message,
-            context_string
-        )
+        # Extract final response
+        narrative = final_response.get("narrative", "No response generated")
+        chart_spec = final_response.get("chart_spec")
+        follow_ups = final_response.get("follow_ups", [])
 
-        logger.info(f"Generated query: {cube_query.model_dump(exclude_none=True)}")
+        # Convert chart_spec to ChartData model if present
+        chart_data = None
+        if chart_spec:
+            chart_type = chart_spec.get("type", "table")
+            if chart_type in ["bar", "line", "table"]:
+                chart_data = {
+                    "chart_type": chart_type,
+                    "data": chart_spec.get("data", {}),  # Chart.js format dict with labels/datasets
+                    "options": chart_spec.get("options"),
+                    "x_axis": None,
+                    "y_axis": None,
+                    "title": chart_spec.get("options", {}).get("plugins", {}).get("title", {}).get("text")
+                }
 
-        # Execute query
-        cube_response = await cubejs_client.execute_query(cube_query)
-
-        # Format chart data
-        chart_data = data_analyst_agent.format_chart_data(
-            cube_response,
-            chart_type,
-            cube_query
-        )
-
-        # Generate insights
-        insights = await data_analyst_agent.generate_insights(
-            request.message,
-            cube_response
-        )
-
-        # Generate follow-up suggestions
-        suggestions = await chat_agent.suggest_followup_questions(
-            request.message,
-            cube_response
-        )
-
-        # Create response message
-        response_text = "\n".join([f"• {insight}" for insight in insights])
-
+        # Add assistant message to session
         assistant_message = ChatMessage(
             role="assistant",
-            content=response_text,
+            content=narrative,
             timestamp=datetime.now().isoformat()
         )
         session_manager.add_message(session_id, assistant_message)
 
+        # Extract insights from narrative (split by bullet points)
+        insights = [line.strip("• ").strip() for line in narrative.split("\n") if line.strip().startswith("•")]
+
         return ChatResponse(
-            message=response_text,
+            message=narrative,
             session_id=session_id,
             chart=chart_data,
-            insights=insights,
-            suggested_questions=suggestions
+            insights=insights if insights else None,
+            suggested_questions=follow_ups[:3] if follow_ups else []
         )
 
-    except ValueError as e:
-        logger.error(f"Query execution error: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
-    except ConnectionError as e:
-        logger.error(f"Connection error: {str(e)}")
-        raise HTTPException(status_code=503, detail="Cannot connect to data service")
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}", exc_info=True)
+        logger.error(f"Unexpected error in chat endpoint: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

@@ -34,3 +34,17 @@ export interface HealthResponse {
   version: string;
   cubejs_connected: boolean;
 }
+
+export interface AgentInfo {
+  name: string;
+  status: 'active' | 'inactive';
+  description: string;
+  provider?: string;
+  tools: string[];
+  memory_enabled: boolean;
+}
+
+export interface AgentListResponse {
+  agents: AgentInfo[];
+  total_count: number;
+}
