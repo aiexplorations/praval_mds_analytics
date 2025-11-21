@@ -235,7 +235,7 @@ class EnhancedSessionManager:
             self.entity_trackers[session_id].update(message.content)
 
         # Persist to database
-        messages_json = json.dumps([msg.dict() for msg in self.cache[session_id]["messages"]])
+        messages_json = json.dumps([msg.model_dump() for msg in self.cache[session_id]["messages"]])
         entities_json = json.dumps(self.entity_trackers[session_id].to_dict())
 
         await db.execute(
