@@ -1,12 +1,87 @@
 # Praval Manufacturing Analytics System
 
-AI-powered analytics platform for automotive press manufacturing, featuring multi-agent intelligence and real-time data insights.
+AI-powered analytics platform for automotive press manufacturing, built on [Praval](https://pravalagents.com) - an event-driven multi-agent framework. The system uses 5 specialized AI agents that collaborate through Praval's Reef/Spore architecture to answer natural language questions about production metrics, quality trends, and manufacturing performance.
 
-## Overview
+## What This Project Demonstrates
 
-This system provides comprehensive analytics for automotive stamping operations, tracking production metrics across two press lines:
-- **Line A (800T)**: Door outer panels (Left/Right)
-- **Line B (1200T)**: Bonnet outer panels
+- **Multi-Agent AI Architecture**: 5 agents (Manufacturing Advisor, Analytics Specialist, Visualization Specialist, Quality Inspector, Report Writer) working together without central orchestration
+- **Event-Driven Communication**: Agents communicate through Praval's Spore messages, enabling parallel execution and graceful degradation
+- **Manufacturing Domain Intelligence**: Deep understanding of press shop terminology, OEE calculations, defect analysis, and die management
+- **End-to-End Data Pipeline**: Source databases → EL Pipeline → dbt transformations → Cube.js semantic layer → AI agents → Frontend
+
+## Quick Start (6 Steps)
+
+### Prerequisites
+- Docker Desktop (running)
+- OpenAI API key
+
+### Step 1: Clone and Configure
+
+```bash
+# Clone repository
+git clone https://github.com/<your-org>/praval_mds_analytics.git
+cd praval_mds_analytics
+
+# Create environment file from template
+cp .env.example .env
+```
+
+Edit `.env` and add your OpenAI API key:
+```bash
+OPENAI_API_KEY=sk-your-key-here
+```
+
+### Step 2: Start the System
+
+```bash
+# Start all services (takes ~2 minutes for databases to initialize)
+docker-compose up -d
+
+# Verify all 10 services are running
+docker-compose ps
+```
+
+### Step 3: Run dbt Transformations
+
+```bash
+# Run dbt models (creates staging → intermediate → mart tables)
+docker exec analytics-agents ./venv/bin/dbt run --project-dir=dbt_transform
+
+# Verify models ran successfully
+docker exec analytics-agents ./venv/bin/dbt test --project-dir=dbt_transform
+```
+
+### Step 4: Verify the System
+
+```bash
+# Check agents API health
+curl http://localhost:8000/health
+# Expected: {"status":"healthy","version":"0.1.0","cubejs_connected":true}
+
+# Check agents are registered
+curl http://localhost:8000/agents
+```
+
+### Step 5: Access the Application
+
+| Application | URL | Description |
+|-------------|-----|-------------|
+| **Frontend** | http://localhost:3000 | Chat interface |
+| **API Docs** | http://localhost:8000/docs | Swagger UI |
+| **Cube Playground** | http://localhost:4000 | Query builder |
+| **Airflow** | http://localhost:8080 | DAG monitoring (admin/admin) |
+
+### Step 6: Try Sample Queries
+
+In the frontend chat (http://localhost:3000), try these queries:
+
+- "What's the OEE for each press line?"
+- "Compare Door_Outer_Left vs Door_Outer_Right by defect type"
+- "Show me quality trends over the last 30 days"
+- "Which shift has the best performance?"
+- "What are the main defect types for bonnet panels?"
+
+---
 
 ## Architecture
 
@@ -18,132 +93,66 @@ dbt Transformations → Staging → Marts
     ↓
 Cube.js Semantic Layer
     ↓
-AI Agents → Frontend (Next.js)
+AI Agents (Praval) → Frontend (Next.js)
 ```
 
-### Key Components
+### Services Overview
 
-1. **Source Databases (PostgreSQL)**
-   - Press Line A production data
-   - Press Line B production data
-   - Die management system
-   - Material coil tracking
-   - Legacy pen production (refills, bodies, springs)
+| Service | Port | Purpose |
+|---------|------|---------|
+| analytics-agents | 8000 | FastAPI + Praval 5-agent system |
+| analytics-frontend | 3000 | Next.js chat UI |
+| cubejs | 4000 | Semantic layer (3 cubes) |
+| postgres-press-line-a | 5436 | Door panel production (2,160 records) |
+| postgres-press-line-b | 5437 | Bonnet panel production (2,160 records) |
+| postgres-die-management | 5438 | Die data (4 dies + assessments) |
+| postgres-warehouse | 5435 | Data warehouse |
+| airflow-webserver | 8080 | Orchestration UI |
 
-2. **Data Warehouse**
-   - Unified data storage
-   - Foreign Data Wrappers for cross-database queries
-   - Staging and mart schemas
+### AI Agents (Praval Framework)
 
-3. **dbt Transformation Layer**
-   - 4 staging models (data cleansing)
-   - 2 intermediate models (business logic)
-   - 3 mart models (analytics-ready)
+The system uses 5 specialized agents that communicate through Praval's event-driven Spore/Reef architecture:
 
-4. **Cube.js Semantic Layer**
-   - `PressOperations`: Production-level data with traceability
-   - `PartFamilyPerformance`: Aggregated performance by part type
-   - `PressLineUtilization`: Line capacity and shift analysis
+| Agent | Role |
+|-------|------|
+| **Manufacturing Advisor** | Domain expertise, terminology mapping, clarification questions |
+| **Analytics Specialist** | Query translation, Cube.js execution, schema knowledge |
+| **Visualization Specialist** | Chart type selection, data presentation |
+| **Quality Inspector** | Anomaly detection, pattern analysis, root cause hypotheses |
+| **Report Writer** | Narrative composition, actionable insights, follow-up suggestions |
 
-5. **AI Agents (OpenAI)**
-   - Chat Agent: Conversation management
-   - Data Analyst Agent: Query translation and insights
+**Key Benefits:**
+- Parallel execution (Visualization + Quality agents run simultaneously)
+- Graceful degradation (system works even if one agent fails)
+- No single point of failure (no orchestrator)
 
-6. **Frontend (Next.js)**
-   - Interactive chat interface
-   - Dynamic visualizations
-   - Real-time status monitoring
+See [docs/AGENT_ARCHITECTURE.md](docs/AGENT_ARCHITECTURE.md) for detailed implementation.
 
-## Quick Start
+### Data Model
 
-### Prerequisites
-- Docker & Docker Compose
-- OpenAI API key
+**Press Lines:**
+- **Line A (800T)**: Door outer panels (Left/Right) - 90 days of hourly data
+- **Line B (1200T)**: Bonnet outer panels - 90 days of hourly data
 
-### Setup
+**Key Metrics:**
+- OEE (Availability × Performance × Quality Rate)
+- Defect rates by type (springback, burr, surface scratch, etc.)
+- Cycle time, tonnage, material costs
+- Shift and operator performance
 
-1. **Clone the repository**
-   ```bash
-   git clone <repo-url>
-   cd praval_mds_analytics
-   ```
+**Cube.js Semantic Layer:**
+- `PressOperations`: Production-level data with full traceability
+- `PartFamilyPerformance`: Aggregated performance by part type
+- `PressLineUtilization`: Line capacity and shift analysis
 
-2. **Configure environment**
-   ```bash
-   cp .env.example .env
-   # Edit .env and add your OPENAI_API_KEY
-   ```
-
-3. **Start the system**
-   ```bash
-   docker-compose up -d
-   ```
-
-4. **Wait for initialization** (~2 minutes for databases to populate)
-
-5. **Run dbt transformations**
-   ```bash
-   docker exec analytics-agents ./venv/bin/dbt run --project-dir=dbt_transform
-   ```
-
-6. **Access the application**
-   - Frontend: http://localhost:3000
-   - Cube.js Playground: http://localhost:4000
-   - Airflow: http://localhost:8080 (admin/admin)
-   - Agents API: http://localhost:8000/docs
-
-## Data Model
-
-### Press Operations Fact Table
-- **Grain:** One row per part produced
-- **Metrics:** OEE, defect counts, costs, cycle time, tonnage
-- **Dimensions:** Part family, press line, die, material, shift, operator, defect type
-
-### Part Family Performance (Aggregated)
-- **Grain:** One row per part family
-- **Metrics:** First pass yield, rework rate, total costs, material correlation
-- **Dimensions:** Part family, part type, material grade
-
-### Press Line Utilization (Aggregated)
-- **Grain:** One row per press line
-- **Metrics:** Overall OEE, shift productivity, weekend/weekday split
-- **Dimensions:** Press line, part type
-
-## Manufacturing Metrics
-
-### OEE (Overall Equipment Effectiveness)
-```
-OEE = Availability × Performance × Quality Rate
-
-- Availability: Uptime / Planned production time
-- Performance: Actual output / Target output
-- Quality Rate: Good parts / Total parts produced
-```
-
-### Key Performance Indicators
-- **Pass Rate:** Percentage of parts passing quality inspection
-- **First Pass Yield:** Percentage of parts passing without rework
-- **Defect Rate:** Percentage of parts with defects by type
-- **Cycle Time:** Time per part (Line A: 1.2-1.5s, Line B: 3.5-4.5s)
-- **Tonnage:** Press force (Line A: 600-650T, Line B: 900-1100T)
-
-## Example Queries
-
-Ask the AI agents natural language questions:
-
-- "What's the OEE for each press line?"
-- "Which part family has the best quality?"
-- "Show me defect trends over time"
-- "Compare shift performance"
-- "What's the cost per part by line?"
-- "Show me springback defects for Door_Outer_Left"
+---
 
 ## Development
 
 ### Project Structure
 ```
 praval_mds_analytics/
-├── agents/              # AI agents (FastAPI)
+├── agents/              # AI agents (FastAPI + Praval)
 ├── airflow/             # Orchestration DAGs
 ├── cubejs/              # Semantic layer schemas
 ├── dbt_transform/       # dbt models
@@ -152,21 +161,25 @@ praval_mds_analytics/
 ├── frontend/            # Next.js UI
 ├── tests/               # Test suites
 └── docs/                # Documentation
-    ├── AGENT_ARCHITECTURE.md    # Multi-agent system design
-    ├── IMPLEMENTATION_PLAN.md   # Development roadmap
-    └── planning/                # Historical planning docs
 ```
 
 ### Running Tests
-```bash
-# Python tests
-pytest
 
-# dbt tests
-docker exec analytics-agents ./venv/bin/dbt test --project-dir=dbt_transform
+```bash
+# Create virtual environment (first time only)
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Run tests
+./venv/bin/pytest
+
+# Run with coverage
+./venv/bin/pytest --cov=agents --cov=el_pipeline --cov-report=html
 ```
 
 ### Adding New Data Sources
+
 1. Create database init script in `docker/postgres/<source-name>/`
 2. Add service to `docker-compose.yml`
 3. Create Foreign Data Wrapper in warehouse `init.sql`
@@ -174,56 +187,94 @@ docker exec analytics-agents ./venv/bin/dbt test --project-dir=dbt_transform
 5. Create staging model in dbt
 6. Create Cube.js schema
 
+---
+
+## Troubleshooting
+
+### Docker containers not starting
+
+```bash
+# Check container logs
+docker-compose logs <service-name>
+
+# Restart all services
+docker-compose down && docker-compose up -d
+
+# Full reset (removes data volumes)
+docker-compose down -v && docker-compose up -d
+```
+
+### Database connection errors
+
+```bash
+# Verify databases are healthy
+docker-compose ps
+
+# Check if data was loaded
+docker exec postgres-press-line-a psql -U press_a_user -d press_line_a -c "SELECT COUNT(*) FROM press_line_a_production"
+```
+
+### Agents API not responding
+
+```bash
+# Check agent logs
+docker logs analytics-agents --tail 100
+
+# Verify OpenAI API key is set
+docker exec analytics-agents env | grep OPENAI
+```
+
+### Cube.js not returning data
+
+```bash
+# Check Cube.js logs
+docker logs cubejs --tail 100
+
+# Verify cubes are loaded
+curl http://localhost:4000/cubejs-api/v1/meta
+```
+
+### dbt transformations failing
+
+```bash
+# Run with debug output
+docker exec analytics-agents ./venv/bin/dbt run --project-dir=dbt_transform --debug
+
+# Check warehouse connection
+docker exec analytics-agents ./venv/bin/dbt debug --project-dir=dbt_transform
+```
+
+### Port already in use
+
+```bash
+# Find what's using the port
+lsof -i :8000
+
+# Kill the process or change port in docker-compose.yml
+```
+
+---
+
 ## Technologies
 
+- **AI Framework:** [Praval](https://pravalagents.com) 0.7.16 (Reef/Spores event-driven architecture)
+- **LLM:** OpenAI GPT-4o-mini
 - **Backend:** FastAPI, Python 3.11
 - **Database:** PostgreSQL 15
 - **Data Transformation:** dbt 1.7
 - **Orchestration:** Apache Airflow 2.7
 - **Semantic Layer:** Cube.js
-- **AI:** OpenAI GPT-4
 - **Frontend:** Next.js 14, React, TypeScript
 - **Infrastructure:** Docker, Docker Compose
 
-## Architecture Decisions
+---
 
-### Why Foreign Data Wrappers?
-Maintains separate source databases (realistic for manufacturing) while enabling centralized analytics without complex ETL.
+## Documentation
 
-### Why Cube.js?
-Pre-aggregations for fast queries, semantic layer for consistent metrics, REST API for easy integration.
+- [Agent Architecture](docs/AGENT_ARCHITECTURE.md) - Detailed Praval multi-agent implementation
+- [Automotive Dataset](docs/AUTOMOTIVE_DATASET.md) - Dataset specification and use cases
 
-### Why Multi-Agent System?
-Specialized agents for different aspects:
-- Manufacturing domain expertise
-- Query optimization
-- Visualization selection
-- Quality analysis
-- Report writing
-
-See [AGENT_ARCHITECTURE.md](docs/AGENT_ARCHITECTURE.md) for detailed design.
-
-## Roadmap
-
-### Current Implementation (v0.1)
-- ✅ Automotive press data pipeline
-- ✅ dbt transformations
-- ✅ Cube.js semantic layer
-- ✅ Basic AI agents (2-agent system)
-- ✅ Interactive frontend
-
-### Planned (v0.2)
-- [ ] 5-agent architecture (Manufacturing Advisor, Analytics Specialist, Visualization Specialist, Quality Inspector, Report Writer)
-- [ ] Advanced query understanding ("doors parts" → Door_Outer_Left + Door_Outer_Right)
-- [ ] Root cause analysis with domain knowledge
-- [ ] Clarification questions for ambiguous queries
-- [ ] Enhanced visualizations (grouped bars, time series)
-
-See [IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) for full roadmap.
-
-## Contributing
-
-See [AGENT_ARCHITECTURE.md](docs/AGENT_ARCHITECTURE.md) for agent development guidelines.
+---
 
 ## License
 

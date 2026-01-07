@@ -6,28 +6,28 @@ from el_pipeline.config import PipelineConfig, DatabaseConfig
 
 @pytest.fixture
 def test_config():
-    """Provide test configuration."""
+    """Provide test configuration for automotive press analytics."""
     return PipelineConfig(
         refills_db=DatabaseConfig(
             host="localhost",
-            port=5432,
-            database="refills",
-            user="refills_user",
-            password="refills_pass",
+            port=5436,
+            database="press_line_a",
+            user="press_a_user",
+            password="press_a_pass",
         ),
         bodies_db=DatabaseConfig(
             host="localhost",
-            port=5433,
-            database="bodies",
-            user="bodies_user",
-            password="bodies_pass",
+            port=5437,
+            database="press_line_b",
+            user="press_b_user",
+            password="press_b_pass",
         ),
         springs_db=DatabaseConfig(
             host="localhost",
-            port=5434,
-            database="springs",
-            user="springs_user",
-            password="springs_pass",
+            port=5438,
+            database="die_management",
+            user="die_mgmt_user",
+            password="die_mgmt_pass",
         ),
         warehouse_db=DatabaseConfig(
             host="localhost",
@@ -46,8 +46,8 @@ def db_config():
     """Provide database configuration for testing."""
     return DatabaseConfig(
         host="localhost",
-        port=5432,
-        database="refills",
-        user="refills_user",
-        password="refills_pass",
+        port=5436,
+        database="press_line_a",
+        user="press_a_user",
+        password="press_a_pass",
     )

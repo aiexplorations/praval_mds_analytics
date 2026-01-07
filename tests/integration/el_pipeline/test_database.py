@@ -34,7 +34,7 @@ def test_execute_query(db_config):
     db = DatabaseConnection(db_config)
 
     try:
-        result = db.execute_query("SELECT COUNT(*) as count FROM refills_production")
+        result = db.execute_query("SELECT COUNT(*) as count FROM press_line_a_production")
         assert len(result) == 1
         assert 'count' in result[0]
         assert result[0]['count'] >= 0
@@ -48,7 +48,7 @@ def test_get_table_count(db_config):
     db = DatabaseConnection(db_config)
 
     try:
-        count = db.get_table_count("refills_production")
+        count = db.get_table_count("press_line_a_production")
         assert isinstance(count, int)
         assert count >= 0
     finally:

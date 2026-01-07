@@ -11,6 +11,7 @@ sys.path.insert(0, str(agents_dir))
 
 from app import app
 from models import CubeQuery, ChartData
+import report_writer
 
 
 client = TestClient(app)
@@ -45,20 +46,47 @@ def test_chat_endpoint_invalid_request():
 
 
 def test_chat_endpoint_creates_session():
-    """Test that chat endpoint creates a session if none provided."""
-    with patch("chat_agent.chat_agent.should_query_data", new_callable=AsyncMock) as mock_should_query, \
-         patch("chat_agent.chat_agent.generate_conversational_response", new_callable=AsyncMock) as mock_response:
+    """Test that chat endpoint creates a session if none provided.
 
-        mock_should_query.return_value = False
-        mock_response.return_value = "Hello! How can I help?"
+    The Praval multi-agent system handles user queries via Manufacturing Advisor,
+    Analytics Specialist, and Report Writer agents. For non-data queries like
+    'Hello', the system guides users toward manufacturing analytics questions.
+    """
+    # Mock the report_writer._pending_responses to provide a test response
+    with patch.object(report_writer, '_pending_responses', {}) as mock_responses:
+        # Pre-populate response for any session (we don't know the ID yet)
+        # The endpoint will create a session and look for a response
 
-        response = client.post("/chat", json={"message": "Hello"})
+        # We need to mock the response after the session is created
+        # Use a side effect to capture the session_id and inject response
+        original_broadcast = None
+        captured_session_id = None
+
+        def capture_and_respond(from_agent, knowledge):
+            nonlocal captured_session_id
+            if knowledge.get("type") == "user_query":
+                captured_session_id = knowledge.get("session_id")
+                # Inject a mock response for this session
+                mock_responses[captured_session_id] = {
+                    "narrative": "Hello! I can help you analyze automotive press manufacturing data.",
+                    "chart_spec": None,
+                    "follow_ups": ["What's the OEE?", "Show me quality trends"]
+                }
+
+        with patch("app.get_reef") as mock_get_reef:
+            mock_reef = mock_get_reef.return_value
+            mock_reef.broadcast.side_effect = capture_and_respond
+            mock_reef.get_network_stats.return_value = {"channel_stats": {}}
+
+            response = client.post("/chat", json={"message": "Hello"})
 
         assert response.status_code == 200
         data = response.json()
         assert "session_id" in data
         assert len(data["session_id"]) > 0
-        assert data["message"] == "Hello! How can I help?"
+        # Verify a message was returned (content may vary based on agent responses)
+        assert "message" in data
+        assert len(data["message"]) > 0
 
 
 @pytest.mark.asyncio

@@ -1,69 +1,6 @@
 version: '3.8'
 
 services:
-  # Source Database 1: Refills Manufacturing
-  postgres-refills:
-    image: postgres:15
-    container_name: postgres-refills
-    environment:
-      POSTGRES_DB: refills
-      POSTGRES_USER: refills_user
-      POSTGRES_PASSWORD: refills_pass
-    ports:
-      - "5432:5432"
-    volumes:
-      - ./docker/postgres/refills/init.sql:/docker-entrypoint-initdb.d/init.sql
-      - postgres-refills-data:/var/lib/postgresql/data
-    networks:
-      - mds-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U refills_user -d refills"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Source Database 2: Bodies Manufacturing
-  postgres-bodies:
-    image: postgres:15
-    container_name: postgres-bodies
-    environment:
-      POSTGRES_DB: bodies
-      POSTGRES_USER: bodies_user
-      POSTGRES_PASSWORD: bodies_pass
-    ports:
-      - "5433:5432"
-    volumes:
-      - ./docker/postgres/bodies/init.sql:/docker-entrypoint-initdb.d/init.sql
-      - postgres-bodies-data:/var/lib/postgresql/data
-    networks:
-      - mds-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bodies_user -d bodies"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Source Database 3: Springs Manufacturing
-  postgres-springs:
-    image: postgres:15
-    container_name: postgres-springs
-    environment:
-      POSTGRES_DB: springs
-      POSTGRES_USER: springs_user
-      POSTGRES_PASSWORD: springs_pass
-    ports:
-      - "5434:5432"
-    volumes:
-      - ./docker/postgres/springs/init.sql:/docker-entrypoint-initdb.d/init.sql
-      - postgres-springs-data:/var/lib/postgresql/data
-    networks:
-      - mds-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U springs_user -d springs"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   # Automotive Press Line A: Door Outer Panels (800T Press)
   postgres-press-line-a:
     image: postgres:15
@@ -147,113 +84,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-
-  # Airbyte
-  airbyte-init:
-    image: airbyte/init:latest
-    container_name: airbyte-init
-    command: /bin/sh -c "./scripts/create_mount_directories.sh /local_parent ${HACK_LOCAL_ROOT_PARENT} ${LOCAL_ROOT}"
-    environment:
-      - LOCAL_ROOT=${LOCAL_ROOT}
-      - HACK_LOCAL_ROOT_PARENT=${HACK_LOCAL_ROOT_PARENT}
-    volumes:
-      - ${HACK_LOCAL_ROOT_PARENT}:/local_parent
-    networks:
-      - mds-network
-
-  airbyte-db:
-    image: airbyte/db:latest
-    container_name: airbyte-db
-    restart: unless-stopped
-    environment:
-      - POSTGRES_USER=docker
-      - POSTGRES_PASSWORD=docker
-    volumes:
-      - airbyte-db-data:/var/lib/postgresql/data
-    networks:
-      - mds-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U docker"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  airbyte-worker:
-    image: airbyte/worker:latest
-    container_name: airbyte-worker
-    restart: unless-stopped
-    environment:
-      - AIRBYTE_VERSION=0.50.0
-      - CONFIG_ROOT=/data
-      - DATABASE_USER=docker
-      - DATABASE_PASSWORD=docker
-      - DATABASE_URL=jdbc:postgresql://airbyte-db:5432/airbyte
-      - LOCAL_ROOT=${LOCAL_ROOT}
-      - WORKSPACE_ROOT=${WORKSPACE_ROOT}
-      - TRACKING_STRATEGY=segment
-      - WORKER_ENVIRONMENT=docker
-    volumes:
-      - ${LOCAL_ROOT}:${LOCAL_ROOT}
-      - ${WORKSPACE_ROOT}:${WORKSPACE_ROOT}
-    networks:
-      - mds-network
-    depends_on:
-      airbyte-db:
-        condition: service_healthy
-
-  airbyte-server:
-    image: airbyte/server:latest
-    container_name: airbyte-server
-    restart: unless-stopped
-    environment:
-      - AIRBYTE_VERSION=0.50.0
-      - CONFIG_ROOT=/data
-      - DATABASE_USER=docker
-      - DATABASE_PASSWORD=docker
-      - DATABASE_URL=jdbc:postgresql://airbyte-db:5432/airbyte
-      - TRACKING_STRATEGY=segment
-      - WORKSPACE_ROOT=${WORKSPACE_ROOT}
-    ports:
-      - "8001:8001"
-    volumes:
-      - ${WORKSPACE_ROOT}:${WORKSPACE_ROOT}
-    networks:
-      - mds-network
-    depends_on:
-      airbyte-db:
-        condition: service_healthy
-
-  airbyte-webapp:
-    image: airbyte/webapp:latest
-    container_name: airbyte-webapp
-    restart: unless-stopped
-    ports:
-      - "8000:80"
-    environment:
-      - AIRBYTE_VERSION=0.50.0
-      - API_URL=/api/v1/
-      - TRACKING_STRATEGY=segment
-    networks:
-      - mds-network
-    depends_on:
-      - airbyte-server
-
-  airbyte-temporal:
-    image: airbyte/temporal:latest
-    container_name: airbyte-temporal
-    restart: unless-stopped
-    environment:
-      - DB=postgresql
-      - DB_PORT=5432
-      - POSTGRES_USER=docker
-      - POSTGRES_PWD=docker
-      - POSTGRES_SEEDS=airbyte-db
-      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development.yaml
-    networks:
-      - mds-network
-    depends_on:
-      airbyte-db:
-        condition: service_healthy
 
   # Airflow Metadata Database
   airflow-db:
@@ -419,14 +249,10 @@ services:
       - mds-network
 
 volumes:
-  postgres-refills-data:
-  postgres-bodies-data:
-  postgres-springs-data:
   postgres-press-line-a-data:
   postgres-press-line-b-data:
   postgres-die-management-data:
   postgres-warehouse-data:
-  airbyte-db-data:
   airflow-db-data:
 
 networks:

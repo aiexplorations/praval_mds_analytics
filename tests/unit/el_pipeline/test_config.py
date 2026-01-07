@@ -36,10 +36,10 @@ def test_database_config_connection_string():
 
 
 def test_pipeline_config_creation(test_config):
-    """Test PipelineConfig creation."""
-    assert test_config.refills_db.database == "refills"
-    assert test_config.bodies_db.database == "bodies"
-    assert test_config.springs_db.database == "springs"
+    """Test PipelineConfig creation for automotive press analytics."""
+    assert test_config.refills_db.database == "press_line_a"
+    assert test_config.bodies_db.database == "press_line_b"
+    assert test_config.springs_db.database == "die_management"
     assert test_config.warehouse_db.database == "warehouse"
     assert test_config.batch_size == 100
     assert test_config.log_level == "DEBUG"
