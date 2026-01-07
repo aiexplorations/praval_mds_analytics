@@ -10,6 +10,7 @@ from typing import Dict, List, Any
 from praval import agent, broadcast, Spore
 from openai import AsyncOpenAI
 from config import settings
+from async_utils import run_async
 
 logger = logging.getLogger(__name__)
 
@@ -286,7 +287,7 @@ def quality_inspector_handler(spore: Spore):
     inspector = QualityInspectorAgent()
 
     # Analyze data and generate insights
-    insights = asyncio.run(inspector.analyze_data(
+    insights = run_async(inspector.analyze_data(
         query_results,
         measures,
         dimensions,

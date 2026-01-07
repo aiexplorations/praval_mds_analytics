@@ -10,6 +10,7 @@ from typing import Dict, List, Any, Optional
 from praval import agent, broadcast, Spore
 from openai import AsyncOpenAI
 from config import settings
+from async_utils import run_async
 
 logger = logging.getLogger(__name__)
 
@@ -389,7 +390,7 @@ def report_writer_handler(spore: Spore):
             }
         else:
             # All in-scope queries - compose narrative with LLM
-            final_response = asyncio.run(writer.compose_narrative(
+            final_response = run_async(writer.compose_narrative(
                 chart_spec=session["chart"],
                 insights=session["insights"],
                 session_id=session_id

@@ -10,6 +10,7 @@ from typing import Dict, List, Any
 from praval import agent, broadcast, Spore
 from openai import AsyncOpenAI
 from config import settings
+from async_utils import run_async
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +158,7 @@ def manufacturing_advisor_handler(spore: Spore):
     advisor = ManufacturingAdvisorAgent()
 
     # Enrich query with domain knowledge (unified flow for ALL queries)
-    enriched = asyncio.run(advisor.enrich_query(user_message, context, session_id))
+    enriched = run_async(advisor.enrich_query(user_message, context, session_id))
 
     # Check guardrails - reject out-of-scope queries
     if not enriched.get("is_in_scope", True):
@@ -189,7 +190,7 @@ def manufacturing_advisor_handler(spore: Spore):
         from cubejs_client import cubejs_client
         import asyncio
         try:
-            metadata = asyncio.run(cubejs_client.get_meta())
+            metadata = run_async(cubejs_client.get_meta())
             cubes = metadata.get("cubes", [])
 
             # Build response from actual Cube.js schema

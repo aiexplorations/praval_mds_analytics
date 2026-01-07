@@ -13,6 +13,7 @@ from models import CubeQuery
 from cubejs_client import cubejs_client
 from openai import AsyncOpenAI
 from config import settings
+from async_utils import run_async
 
 logger = logging.getLogger(__name__)
 
@@ -382,7 +383,7 @@ def analytics_specialist_handler(spore: Spore):
             logger.info(f"Built Cube.js query: {cube_query.model_dump(exclude_none=True)}")
 
             # Execute query and prepare data_ready Spore
-            data_ready = asyncio.run(specialist.execute_query(cube_query, session_id))
+            data_ready = run_async(specialist.execute_query(cube_query, session_id))
 
             # Broadcast data_ready for Visualization Specialist and Quality Inspector
             logger.info(f"Broadcasting data_ready: {data_ready['row_count']} rows")

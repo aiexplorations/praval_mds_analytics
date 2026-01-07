@@ -1,19 +1,30 @@
 -- Data Warehouse Schema
 -- Central repository for manufacturing data from all source systems
+--
+-- NOTE: This file contains LEGACY pen manufacturing tables (refills, bodies, springs).
+-- The current automotive press manufacturing schema is managed by:
+--   - Source DBs: docker/postgres/press-line-a/, press-line-b/, die-management/
+--   - dbt models: dbt_transform/models/staging/ and dbt_transform/models/marts/
+--   - Cube.js: cubejs/schema/PressOperations.js, etc.
+--
+-- The legacy tables below are kept for reference but are NOT used by the current system.
 
 -- Create schemas for different layers
 CREATE SCHEMA IF NOT EXISTS raw;
 CREATE SCHEMA IF NOT EXISTS staging;
 CREATE SCHEMA IF NOT EXISTS marts;
+CREATE SCHEMA IF NOT EXISTS staging_marts;  -- Used by dbt for automotive marts
 
 -- Set search path
 SET search_path TO raw, staging, marts, public;
 
 -- ============================================
--- RAW LAYER: Direct copies from source systems
+-- RAW LAYER: LEGACY pen manufacturing tables (DEPRECATED)
+-- These tables are NOT used by the current automotive press system.
+-- Kept for backward compatibility only.
 -- ============================================
 
--- Raw refills data (will be populated by Airbyte)
+-- LEGACY: Raw refills data (pen manufacturing - not used)
 CREATE TABLE IF NOT EXISTS raw.refills_production (
     id INTEGER,
     timestamp TIMESTAMP WITH TIME ZONE,
@@ -31,7 +42,7 @@ CREATE TABLE IF NOT EXISTS raw.refills_production (
     _airbyte_normalized_at TIMESTAMP WITH TIME ZONE
 );
 
--- Raw bodies data (will be populated by Airbyte)
+-- LEGACY: Raw bodies data (pen manufacturing - not used)
 CREATE TABLE IF NOT EXISTS raw.bodies_production (
     id INTEGER,
     timestamp TIMESTAMP WITH TIME ZONE,
@@ -49,7 +60,7 @@ CREATE TABLE IF NOT EXISTS raw.bodies_production (
     _airbyte_normalized_at TIMESTAMP WITH TIME ZONE
 );
 
--- Raw springs data (will be populated by Airbyte)
+-- LEGACY: Raw springs data (pen manufacturing - not used)
 CREATE TABLE IF NOT EXISTS raw.springs_production (
     id INTEGER,
     timestamp TIMESTAMP WITH TIME ZONE,
@@ -250,7 +261,7 @@ ORDER BY dd.date DESC, pl.line_id;
 -- COMMENTS
 -- ============================================
 
-COMMENT ON SCHEMA raw IS 'Raw data layer - direct copies from source systems via Airbyte';
+COMMENT ON SCHEMA raw IS 'Raw data layer - LEGACY pen manufacturing tables (deprecated)';
 COMMENT ON SCHEMA staging IS 'Staging layer - cleaned and standardized data via dbt';
 COMMENT ON SCHEMA marts IS 'Business marts layer - dimensional models for analytics';
 

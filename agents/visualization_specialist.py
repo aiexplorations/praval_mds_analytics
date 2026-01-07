@@ -10,6 +10,7 @@ from typing import Dict, List, Any, Optional
 from praval import agent, broadcast, Spore
 from openai import AsyncOpenAI
 from config import settings
+from async_utils import run_async
 
 logger = logging.getLogger(__name__)
 
@@ -560,7 +561,7 @@ def visualization_specialist_handler(spore: Spore):
     specialist = VisualizationSpecialistAgent()
 
     # Use LLM to determine chart type
-    chart_type = asyncio.run(specialist.determine_chart_type(
+    chart_type = run_async(specialist.determine_chart_type(
         query_results, measures, dimensions, metadata
     ))
     logger.info(f"LLM selected chart type: {chart_type}")

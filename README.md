@@ -111,22 +111,39 @@ AI Agents (Praval) → Frontend (Next.js)
 
 ### AI Agents (Praval Framework)
 
-The system uses 5 specialized agents that communicate through Praval's event-driven Spore/Reef architecture:
+The system uses 5 specialized agents built on [Praval](https://pravalagents.com), an event-driven multi-agent framework. Agents communicate through Praval's Reef/Spore architecture - Spores are JSON messages that flow between agents without central orchestration.
 
-| Agent | Role |
-|-------|------|
-| **Manufacturing Advisor** | Domain expertise, terminology mapping, clarification questions |
-| **Analytics Specialist** | Query translation, Cube.js execution, schema knowledge |
-| **Visualization Specialist** | Chart type selection, data presentation |
-| **Quality Inspector** | Anomaly detection, pattern analysis, root cause hypotheses |
-| **Report Writer** | Narrative composition, actionable insights, follow-up suggestions |
+#### Agent Pipeline
 
-**Key Benefits:**
-- Parallel execution (Visualization + Quality agents run simultaneously)
-- Graceful degradation (system works even if one agent fails)
-- No single point of failure (no orchestrator)
+```
+User Query → Manufacturing Advisor → Analytics Specialist → [Visualization + Quality] → Report Writer → Response
+```
 
-See [docs/AGENT_ARCHITECTURE.md](docs/AGENT_ARCHITECTURE.md) for detailed implementation.
+| Agent | Responds To | Broadcasts | Purpose |
+|-------|-------------|------------|---------|
+| **Manufacturing Advisor** | `user_query` | `domain_enriched_request` | Domain expertise, terminology mapping |
+| **Analytics Specialist** | `domain_enriched_request` | `data_ready` | Query translation, Cube.js execution |
+| **Visualization Specialist** | `data_ready` | `chart_ready` | Chart type selection, Chart.js specs |
+| **Quality Inspector** | `data_ready` | `insights_ready` | Anomaly detection, root cause analysis |
+| **Report Writer** | `chart_ready`, `insights_ready` | `final_response_ready` | Narrative composition |
+
+#### How It Works
+
+1. **User Query**: FastAPI receives a natural language question and broadcasts a `user_query` Spore
+2. **Domain Enrichment**: Manufacturing Advisor maps user terms to domain entities (e.g., "doors" → Door_Outer_Left, Door_Outer_Right)
+3. **Query Execution**: Analytics Specialist translates to Cube.js query and executes against the semantic layer
+4. **Parallel Processing**: Visualization Specialist and Quality Inspector run simultaneously on the data
+5. **Response Composition**: Report Writer waits for both agents, then composes a narrative with chart and insights
+
+#### Key Design Decisions
+
+- **No Orchestrator**: Agents self-coordinate via pub/sub messaging on the Reef
+- **Parallel Execution**: Visualization + Quality agents run simultaneously for faster response
+- **Session Correlation**: Report Writer uses `session_id` to match chart and insights from the same query
+- **Graceful Degradation**: System works even if one agent fails (e.g., returns chart without insights)
+- **LLM Integration**: Each agent uses GPT-4o-mini for its specific domain task
+
+See [docs/AGENT_ARCHITECTURE.md](docs/AGENT_ARCHITECTURE.md) for detailed implementation and Spore schemas.
 
 ### Data Model
 
@@ -271,7 +288,8 @@ lsof -i :8000
 
 ## Documentation
 
-- [Agent Architecture](docs/AGENT_ARCHITECTURE.md) - Detailed Praval multi-agent implementation
+- [Data Architecture](docs/DATA_ARCHITECTURE.md) - End-to-end system architecture (source DBs, dbt, Cube.js, Airflow, agents)
+- [Agent Architecture](docs/AGENT_ARCHITECTURE.md) - Detailed Praval multi-agent implementation and Spore schemas
 - [Automotive Dataset](docs/AUTOMOTIVE_DATASET.md) - Dataset specification and use cases
 
 ---
